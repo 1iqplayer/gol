@@ -79,24 +79,24 @@ pub mod app {
             }
         }
 
-        pub fn show_msg<T: Display>(&mut self, msg: T, col: Color, duration: Duration) {
-            let msg_len = msg.to_string().len() as u16;
-            let (width, height) = (self.win_info.x, self.win_info.y);
-            let r_x = width / 2 - (msg_len / 2) - 1 as u16;
-            let r_y = height / 2 - 1;
-            let r_w = (msg_len + 2) as u16;
-            let r_h = 3 as u16;
-            self.draw_rect(r_x, r_y, r_w, r_h, col);
-            queue!(
-                self.out,
-                MoveTo(width / 2 - msg_len / 2, height / 2),
-                Print(msg),
-                ResetColor
-            )
-            .unwrap();
-            self.out.flush().unwrap();
-            sleep(duration);
-            queue!(self.out, ResetColor).unwrap();
-        }
+        // pub fn show_msg<T: Display>(&mut self, msg: T, col: Color, duration: Duration) {
+        //     let msg_len = msg.to_string().len() as u16;
+        //     let (width, height) = (self.win_info.x, self.win_info.y);
+        //     let r_x = width / 2 - (msg_len / 2) - 1 as u16;
+        //     let r_y = height / 2 - 1;
+        //     let r_w = (msg_len + 2) as u16;
+        //     let r_h = 3 as u16;
+        //     self.draw_rect(r_x, r_y, r_w, r_h, col);
+        //     queue!(
+        //         self.out,
+        //         MoveTo(width / 2 - msg_len / 2, height / 2),
+        //         Print(msg),
+        //         ResetColor
+        //     )
+        //     .unwrap();
+        //     self.out.flush().unwrap();
+        //     sleep(duration);
+        //     queue!(self.out, ResetColor).unwrap();
+        // }
     }
 }
