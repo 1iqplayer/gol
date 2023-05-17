@@ -1,5 +1,5 @@
 pub mod gol {
-    use std::{rc::Rc, cell::Cell};
+    use std::{rc::Rc, cell::{Cell, RefCell}, vec, fmt::write};
     use Box;
     use std::cmp::{min, max};
 
@@ -10,37 +10,49 @@ pub mod gol {
         pub x2: T,
         pub y2: T,
     }
-
+    impl Vec4<i64>{
+        pub fn local_to(&self, local: &Vec4<i64>) -> Vec4<i64>{
+            Vec4 {
+                x1: local.x1 - self.x1, 
+                y1: local.y1 - self.y1, 
+                x2: local.x2 - self.x2, 
+                y2: local.y2 - self.y2 
+            }
+        }
+    }
     pub struct Vec2<T> {
         pub x: T,
         pub y: T,
     }
-    impl Vec2<i64>{
-        fn add(&self, x: i64, y: i64) -> Vec2<i64>{
-            Vec2 { x: self.x + x, y: self.y + y}
+    impl <T>Vec2<T>{
+        pub fn new(x: T, y: T) -> Vec2<T>{
+            Vec2{
+                x: x,
+                y: y
+            }
         }
     }
+    // |||||||||   GAME OF LIFE ||||||||||||
 
-
-    const CHUNK_SIZE: usize = 8;
+    const CHUNK_SIZE: i64 = 8;
     struct Cells([bool; (CHUNK_SIZE*CHUNK_SIZE)as usize]);
     impl Cells{
         fn get(&self, x:usize, y:usize) ->bool{
-            self.0[x + (y*CHUNK_SIZE)]
+            self.0[x + (y*CHUNK_SIZE as usize)]
         }
         fn set(&mut self, x:usize, y:usize, val: bool){
-            self.0[x + (y*CHUNK_SIZE)] = val;
+            self.0[x + (y*CHUNK_SIZE as usize)] = val;
         }
     }
     pub struct CellChunk {
-        border: Rc<Box<[Option<CellChunk>; 8]>>,
+        border: Rc<Box<RefCell<[Option<CellChunk>; 8]>>>,
         cells: Cells,
     }
     impl CellChunk {
         pub fn new() -> Self {
             CellChunk {
-                border: Rc::new(Box::new(CellChunk::empty_chunks())),
-                cells: Cells([false; CHUNK_SIZE*CHUNK_SIZE]),
+                border: Rc::new(Box::new(RefCell::new(CellChunk::empty_chunks()))),
+                cells: Cells([false; CHUNK_SIZE as usize*CHUNK_SIZE as usize]),
             }
         }
         
@@ -64,7 +76,7 @@ pub mod gol {
     impl World{
         pub fn new()->Self{
             World { 
-                size: Vec4 { x1: 0, y1: 0, x2: CHUNK_SIZE as i64, y2: CHUNK_SIZE as i64 }, 
+                size: Vec4 { x1: 0, y1: 0, x2: CHUNK_SIZE, y2: CHUNK_SIZE }, 
                 root: CellChunk::new() 
             }
         }
@@ -89,38 +101,46 @@ pub mod gol {
             None
         }
         fn get_data(&self, rect: &Vec4<i64>)-> Vec<bool>{
-            // Which chunks contains data
-            let chunk_x_start = if rect.x1 != 0 {(rect.x1 as f64 / CHUNK_SIZE as f64).floor() as i64} else {0};
-            let chunk_x_end =  (rect.x2 as f64 / CHUNK_SIZE as f64).ceil() as i64;
-            let chunk_y_start = if rect.y1 != 0 {(rect.y1 as f64 / CHUNK_SIZE as f64).floor() as i64} else {0};
-            let chunk_y_end =  (rect.y2 as f64 / CHUNK_SIZE as f64).ceil() as i64;
+            // Top left chunk position
+            let chunk_top_left = Vec2::new(
+                if rect.x1 != 0 {(rect.x1 as f64 / CHUNK_SIZE as f64).floor() as i64} else {0},
+                if rect.y1 != 0 {(rect.y1 as f64 / CHUNK_SIZE as f64).floor() as i64} else {0}
+            );
+            let chunks_x = ((rect.x2 - rect.x1) as f64 / CHUNK_SIZE as f64).ceil() as i64;
+            let chunks_y = ((rect.y2 - rect.y1) as f64 / CHUNK_SIZE as f64).ceil() as i64;
             // Data
-            let mut data = Vec::<bool>::new();
+            let data_size = Vec2::new(
+                rect.x2 - rect.x1,
+                rect.y2 - rect.y1
+            );
+            let mut data = vec![false; (data_size.x*data_size.y) as usize];
+            let mut write_pos = Vec2::new(0, 0);
 
-            for chunk_y in chunk_y_start..=chunk_y_end{
-                for chunk_x in chunk_x_start..=chunk_x_end{
-                    let data_rect = self.intersect(
-                        &Vec4{
-                            x1 : chunk_x * CHUNK_SIZE as i64,
-                            x2 : chunk_x * CHUNK_SIZE as i64 + CHUNK_SIZE as i64,
-                            y1 : chunk_y * CHUNK_SIZE as i64,
-                            y2 : chunk_y * CHUNK_SIZE as i64 + CHUNK_SIZE as i64
-                        }, 
-                        rect
-                    ).unwrap();
+            // Chunk x and y
+            let mut chunk_tl = self.get_chunk(chunk_top_left.x, chunk_top_left.y);
+            let mut chunk = chunk_tl;
+            for chunk_y in 0..chunks_y{
+                for chunk_x in 0..chunks_x{
+                    // Get where window intersects with chunk
+                    let chunk_rect = Vec4{
+                            x1 : chunk_top_left.x + (chunk_x * CHUNK_SIZE),
+                            x2 : chunk_top_left.x + (chunk_x * CHUNK_SIZE) + CHUNK_SIZE,
+                            y1 : chunk_top_left.y + (chunk_y * CHUNK_SIZE),
+                            y2 : chunk_top_left.y + (chunk_y * CHUNK_SIZE + CHUNK_SIZE)
+                        };
+                    let data_rect = self.intersect(&chunk_rect, rect).unwrap().local_to(&chunk_rect);
+
                     // Iterate over data where window intersects in chunk
-                    let chunk = self.get_chunk(chunk_x, chunk_y);
-
-                    for x in data_rect.x1..data_rect.x2{
-                        for y in data_rect.y1..data_rect.y2{
-
+                    for x in data_rect.x1..=data_rect.x2{
+                        for y in data_rect.y1..=data_rect.y2{
+                            let data_index = 
                         }
                     }
                 }
             }
             vec![true]
         }
-        fn get_chunk(&mut self, x:i64, y:i64) -> &mut CellChunk{
+        fn get_chunk(&self, x:i64, y:i64) -> & CellChunk{
             // Determine how much skew and directional moves
             let moves_skew: i64;
             let moves_hor: i64;
@@ -145,20 +165,19 @@ pub mod gol {
             let hor_dir = self.dir2index(x_norm, 0);
             let ver_dir = self.dir2index(0, y_norm);
             // Travel
-            let mut chunk: &mut CellChunk = &mut self.root;
+            let mut chunk = &self.root;
             // Skew
             for _ in 0..moves_skew{
-                chunk = chunk.border[skew_dir].as_mut().unwrap();
+                chunk = chunk.border[skew_dir].as_ref().unwrap();
             }
             // Horizontal
             for _ in 0..moves_hor{
-                chunk = &mut chunk.border[hor_dir].as_ref().unwrap();
+                chunk = chunk.border[hor_dir].as_ref().unwrap();
             }
             // Vertical
             for _ in 0..moves_ver{
-                chunk = &mut chunk.border[ver_dir].as_ref().unwrap();
+                chunk = chunk.border[ver_dir].as_ref().unwrap();
             }
-            chunk.cells.set(0, 0, false);
             chunk
         }
         fn dir2index(&self, x: i64, y: i64) -> usize{
