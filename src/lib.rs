@@ -1,6 +1,6 @@
 mod gol;
 pub mod app {
-    use crate::gol::gol::{World, Vec2, Vec4};
+    use crate::gol::gol::{Vec2, Vec4, World};
     use crossterm::cursor::MoveTo;
     use crossterm::event::{self, read, Event, KeyCode, KeyEvent};
     use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
@@ -18,14 +18,14 @@ pub mod app {
     use std::time::Duration;
     use std::{
         fmt::Display,
-        io::{stdout, Stdout, Write}
+        io::{stdout, Stdout, Write},
     };
     pub struct App {
         pub run: bool,
         win_info_init: Vec2<u16>,
         win_info: Vec4<i64>,
         pub out: Stdout,
-        world: World
+        world: World,
     }
 
     impl App {
@@ -35,14 +35,14 @@ pub mod app {
             let a = App {
                 run: true,
                 win_info_init: Vec2 { x: w, y: h },
-                win_info: Vec4 { 
-                    x1: 0, 
+                win_info: Vec4 {
+                    x1: 0,
                     y1: 0,
                     x2: w as i64,
-                    y2: h as i64
+                    y2: h as i64,
                 },
                 out: stdout(),
-                world: World::new()
+                world: World::new(),
             };
             Ok(a)
         }
