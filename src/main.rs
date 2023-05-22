@@ -10,11 +10,17 @@ fn main() -> Result<()> {
 
     while app.run {
         match crossterm::event::read().unwrap() {
-            Event::Key(k) => {},
+            Event::Key(k) => {handle_key(&mut app, k.code)},
             Event::Mouse(m)=>{},
             _ => {}
         }
     }
 
     Ok(())
+}
+fn handle_key(app: &mut App, k: KeyCode){
+    match k{
+        KeyCode::Enter => {app.draw();}
+        _ => {}
+    }
 }

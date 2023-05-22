@@ -1,25 +1,17 @@
 mod gol;
 pub mod app {
     use crate::gol::gol::{Vec2, Vec4, World};
-    use crossterm::cursor::MoveTo;
-    use crossterm::event::{self, read, Event, KeyCode, KeyEvent};
+    use crossterm::cursor::{MoveTo,Hide,Show};
     use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
+    use crossterm::event;
     use crossterm::terminal::{
         self, disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
         SetTitle,
     };
-    use crossterm::{
-        cursor::{DisableBlinking, Hide, Show},
-        style::{PrintStyledContent, ResetColor, StyledContent},
-        Result,
-    };
+    use crossterm::Result;
     use crossterm::{execute, queue};
-    use std::thread::sleep;
-    use std::time::Duration;
-    use std::{
-        fmt::Display,
-        io::{stdout, Stdout, Write},
-    };
+    use std::io::Write;
+    use std::{io::{stdout, Stdout},};
     pub struct App {
         pub run: bool,
         win_info_init: Vec2<u16>,
@@ -77,6 +69,27 @@ pub mod app {
                     queue!(self.out, Print(" ")).unwrap();
                 }
             }
+        }
+
+        pub fn draw(&mut self){
+            let data = self.world.get_world(self.win_info);
+            let win_size = self.win_info.size();
+            if data.is_none(){
+                queue!(self.out, terminal::Clear(terminal::ClearType::All)).unwrap();
+            }else{
+                let data = data.unwrap();
+                for y in 0..win_size.y{
+                    queue!(self.out, MoveTo(0, y as u16)).unwrap();
+                    for x in 0..win_size.x{
+                        if data[(x + (y*win_size.y)) as usize]{
+                            queue!(self.out, Print("#")).unwrap();
+                        }else{
+                            queue!(self.out, Print(" ")).unwrap();
+                        }
+                    }
+                }
+            }
+            self.out.flush().unwrap();
         }
 
         // pub fn show_msg<T: Display>(&mut self, msg: T, col: Color, duration: Duration) {

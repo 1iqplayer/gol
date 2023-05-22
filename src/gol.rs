@@ -4,7 +4,6 @@ pub mod gol {
     use std::ops::Deref;
     use std::{
         cell::{Cell, RefCell},
-        fmt::write,
         rc::Rc,
         vec,
     };
@@ -18,13 +17,16 @@ pub mod gol {
         pub y2: T,
     }
     impl Vec4<i64> {
-        pub fn local_to(&self, local: &Vec4<i64>) -> Vec4<i64> {
+        pub fn local_to(&self, root: &Vec4<i64>) -> Vec4<i64> {
             Vec4 {
-                x1: local.x1 - self.x1,
-                y1: local.y1 - self.y1,
-                x2: local.x2 - self.x2,
-                y2: local.y2 - self.y2,
+                x1: self.x1 - root.x1,
+                y1: self.y1 - root.y1,
+                x2: (self.x1 - root.x1) + (self.x2 - self.x1),
+                y2: (self.y1 - root.y1) + (self.y2 - self.y1),
             }
+        }
+        pub fn size(&self)->Vec2<i64>{
+            Vec2::new(self.x2 - self.x1, self.y2 - self.y1)
         }
     }
     pub struct Vec2<T> {
@@ -69,7 +71,7 @@ pub mod gol {
         pub fn new() -> Self {
             CellChunk {
                 border: CellChunk::empty_chunks(),
-                cells: RefCell::new(Cells([false; CHUNK_SIZE as usize * CHUNK_SIZE as usize])),
+                cells: RefCell::new(Cells([true; CHUNK_SIZE as usize * CHUNK_SIZE as usize])),
             }
         }
         fn empty_chunks() -> [Option<Rc<CellChunk>>; 8] {
@@ -124,58 +126,58 @@ pub mod gol {
             if data_rect.is_none() {
                 return None;
             }
-            // Get values
-            Some(self.get_data(&data_rect.unwrap()))
-        }
-        fn get_data(&self, rect: &Vec4<i64>) -> Vec<bool> {
-            // Top left chunk position
-            let chunk_top_left = Vec2::new(
-                if rect.x1 != 0 {
-                    (rect.x1 as f64 / CHUNK_SIZE as f64).floor() as i64
-                } else {
-                    0
-                },
-                if rect.y1 != 0 {
-                    (rect.y1 as f64 / CHUNK_SIZE as f64).floor() as i64
-                } else {
-                    0
-                },
-            );
-            let chunks_x = ((rect.x2 - rect.x1) as f64 / CHUNK_SIZE as f64).ceil() as i64;
-            let chunks_y = ((rect.y2 - rect.y1) as f64 / CHUNK_SIZE as f64).ceil() as i64;
-
             // Data
-            let data_size = Vec2::new(rect.x2 - rect.x1, rect.y2 - rect.y1);
+            let data_rect = data_rect.unwrap();
+            let data_size = data_rect.size();
             let mut data = vec![false; (data_size.x * data_size.y) as usize];
-            let mut write_pos = Vec2::new(0, 0);
+            self.get_data(&data_rect, &mut data);
+            // Inject data into window buffer
+            let win_size = win.size();
+            let mut win_data = vec![false; (win_size.x*win_size.y) as usize];
+            for x in data_rect.x1..data_rect.x2{
+                for y in data_rect.y1..data_rect.y2{
+                    win_data[((x - win.x1) + (y-win.y1)*win_size.y) as usize] = data[((x-data_rect.x1)+((y-data_rect.y1)*data_size.y)) as usize];
+                }
+            }
+            Some(win_data)
+        }
+        fn get_data(&self, rect: &Vec4<i64>, data: &mut Vec<bool>){
+            // chunk positions
+            let chunk_x_start = if rect.x1 != 0 {(rect.x1 as f64 / CHUNK_SIZE as f64).floor() as i64} else {0};
+            let chunk_x_end = if rect.x2 != 0 {(rect.x2 as f64 / CHUNK_SIZE as f64).ceil() as i64} else {0};
+            let chunk_y_start = if rect.y1 != 0 {(rect.y1 as f64 / CHUNK_SIZE as f64).floor() as i64} else {0};
+            let chunk_y_end = if rect.y2 != 0 {(rect.y2 as f64 / CHUNK_SIZE as f64).ceil() as i64} else {0};
+            let rect_size = rect.size();
 
             // Top left chunk 
-            let mut chunk_tl = self.get_chunk(chunk_top_left.x, chunk_top_left.y);
+            let mut chunk_tl = self.get_chunk(chunk_x_start, chunk_y_start);
             let mut chunk = chunk_tl.clone();
-            for chunk_y in 0..chunks_y {
-                for chunk_x in 0..chunks_x {
-                    // Get where window intersects with chunk
-                    let chunk_rect = Vec4 {
-                        x1: chunk_top_left.x + (chunk_x * CHUNK_SIZE),
-                        x2: chunk_top_left.x + (chunk_x * CHUNK_SIZE) + CHUNK_SIZE,
-                        y1: chunk_top_left.y + (chunk_y * CHUNK_SIZE),
-                        y2: chunk_top_left.y + (chunk_y * CHUNK_SIZE + CHUNK_SIZE),
-                    };
-                    let data_rect = self
-                        .intersect(&chunk_rect, rect)
-                        .unwrap()
-                        .local_to(&chunk_rect);
 
-                    // Iterate over data where window intersects in chunk
-                    for x in data_rect.x1..=data_rect.x2 {
-                        for y in data_rect.y1..=data_rect.y2 {
-                            let data_index = 1;
+            // Iterate trought every chunk
+            for chunk_y in chunk_y_start..=chunk_y_end {
+                for chunk_x in chunk_x_start..=chunk_x_end{
+                    let chunk_rect = Vec4{
+                        x1 : chunk_x * CHUNK_SIZE,
+                        x2 : chunk_x * CHUNK_SIZE + CHUNK_SIZE,
+                        y1 : chunk_y * CHUNK_SIZE,
+                        y2 : chunk_y * CHUNK_SIZE + CHUNK_SIZE
+                    };
+                    
+                    let chunk_inter = self.intersect(rect, &chunk_rect);
+                    if chunk_inter.is_none(){continue;}
+                    let needed = chunk_inter.unwrap();
+                    chunk = self.get_chunk(chunk_x, chunk_y);
+
+                    let cells = chunk.cells.borrow();
+                    for x in needed.x1..needed.x2{
+                        for y in needed.y1..needed.y2{
+                            let cell_x = (x - chunk_rect.x1) as usize;
+                            let cell_y = (y - chunk_rect.y1) as usize;
+                            data[((x - rect.x1) + (((y - rect.y1) * rect_size.y))) as usize] = cells.get(cell_x, cell_y);
                         }
                     }
                 }
-                chunk_tl = chunk_tl.chunk_to(0, 1);
             }
-            vec![true]
         }
         fn get_chunk(&self, x: i64, y: i64) -> Rc<CellChunk> {
             if x == 0 && y == 0 {return self.root.clone()};
