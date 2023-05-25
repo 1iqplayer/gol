@@ -1,7 +1,9 @@
 mod gol;
+mod math;
 pub mod app {
-    use crate::gol::gol::{Vec2, Vec4, World};
-    use crossterm::cursor::{MoveTo,Hide,Show};
+    use crate::math::*;
+    use crate::gol::*;
+    use crossterm::cursor::{MoveTo,Hide,Show,MoveDown};
     use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
     use crossterm::event;
     use crossterm::terminal::{
@@ -74,22 +76,25 @@ pub mod app {
         pub fn draw(&mut self){
             let data = self.world.get_world(self.win_info);
             let win_size = self.win_info.size();
-            if data.is_none(){
-                queue!(self.out, terminal::Clear(terminal::ClearType::All)).unwrap();
-            }else{
-                let data = data.unwrap();
-                for y in 0..win_size.y{
-                    queue!(self.out, MoveTo(0, y as u16)).unwrap();
-                    for x in 0..win_size.x{
-                        if data[(x + (y*win_size.y)) as usize]{
-                            queue!(self.out, Print("#")).unwrap();
-                        }else{
-                            queue!(self.out, Print(" ")).unwrap();
-                        }
+            for y in 0..win_size.y{
+                queue!(self.out, MoveTo(0, y as u16)).unwrap();
+                for x in 0..win_size.x{
+                    let cell = data[(x + (y*win_size.x)) as usize];
+                    if cell{
+                        queue!(self.out, Print("#")).unwrap();
+                    }else{
+                        queue!(self.out, Print(" ")).unwrap();
                     }
                 }
             }
             self.out.flush().unwrap();
+        }
+        pub fn move_window(&mut self, x: i64, y:i64){
+            self.win_info.x1 += x;
+            self.win_info.x2 += x;
+            self.win_info.y1 += y;
+            self.win_info.y2 += y;
+            self.draw();
         }
 
         // pub fn show_msg<T: Display>(&mut self, msg: T, col: Color, duration: Duration) {

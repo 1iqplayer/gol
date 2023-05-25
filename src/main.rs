@@ -20,7 +20,10 @@ fn main() -> Result<()> {
 }
 fn handle_key(app: &mut App, k: KeyCode){
     match k{
-        KeyCode::Enter => {app.draw();}
+        KeyCode::Enter => {app.draw();},
+        KeyCode::Esc => {app.exit();},
+        KeyCode::Left => {app.move_window(-1, 0);},
+        KeyCode::Right => {app.move_window(1, 0);}
         _ => {}
     }
 }
