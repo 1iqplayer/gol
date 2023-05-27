@@ -1,8 +1,9 @@
 use std::{
     cell::RefCell,
     rc::Rc,
-    vec,
+    vec
 };
+
 use crate::math::*;
 
 const CHUNK_SIZE: i64 = 8;
@@ -16,13 +17,13 @@ impl Cells {
     }
 }
 pub struct CellChunk {
-    border: [Option<Rc<CellChunk>>; 8],
+    border: RefCell<[Option<Rc<CellChunk>>; 8]>,
     cells: RefCell<Cells>,
 }
 impl CellChunk {
     pub fn new() -> Self {
         CellChunk {
-            border: CellChunk::empty_chunks(),
+            border: RefCell::new(CellChunk::empty_chunks()),
             cells: RefCell::new(Cells([true; CHUNK_SIZE as usize * CHUNK_SIZE as usize])),
         }
     }
@@ -39,7 +40,7 @@ impl CellChunk {
         ]
     }
     pub fn chunk_to(&self, x: i64, y:i64)->Rc<CellChunk>{
-        self.border[dir2index(x, y)].as_ref().unwrap().clone()
+        self.border.borrow()[dir2index(x, y)].as_ref().unwrap().clone()
     }
 }
 pub struct World {
@@ -55,7 +56,7 @@ impl World {
                 x2: CHUNK_SIZE,
                 y2: CHUNK_SIZE,
             },
-            root: Rc::new(CellChunk::new()),
+            root: Rc::new(CellChunk::new())
         }
     }
     
@@ -69,9 +70,9 @@ impl World {
         let contact = contact.unwrap();
         // Calculate needed chunks
         let chunk_x_start = if contact.x1 != 0 {(contact.x1 as f64 / CHUNK_SIZE as f64).floor() as i64} else {0};
-        let chunk_x_end = if contact.x2 != 0 {contact.x2  / CHUNK_SIZE as i64} else {0};
+        let chunk_x_end = if contact.x2 != 0 {((contact.x2 as f64 - 0.001)  / CHUNK_SIZE as f64) as i64} else {0};
         let chunk_y_start = if contact.y1 != 0 {(contact.y1 as f64 / CHUNK_SIZE as f64).floor() as i64} else {0};
-        let chunk_y_end = if contact.y2 != 0 {contact.y2  / CHUNK_SIZE as i64} else {0};
+        let chunk_y_end = if contact.y2 != 0 {((contact.y2 as f64 - 0.001)  / CHUNK_SIZE as f64) as i64} else {0};
         // Iterate over chunks 
         for chunk_y in chunk_y_start..=chunk_y_end {
             for chunk_x in chunk_x_start..=chunk_x_end{
@@ -126,28 +127,71 @@ impl World {
         let hor_dir = dir2index(x_norm, 0);
         let ver_dir = dir2index(0, y_norm);
         // Travel
-        let mut chunk = &self.root;
-        let mut last_chunk = chunk;
+        let mut chunk = self.root.clone();
+        let mut last_chunk = chunk.clone();
         let mut last_move = skew_dir;
         // Skew
         for _ in 0..moves_skew {
-            last_chunk = chunk;
+            last_chunk = chunk.clone();
             last_move = skew_dir;
-            chunk = chunk.border[skew_dir].as_ref().unwrap();
+            chunk = chunk.chunk_to(x_norm, y_norm);
         }
         // Horizontal
         for _ in 0..moves_hor {
             last_move = hor_dir;
-            last_chunk = chunk;
-            chunk = chunk.border[hor_dir].as_ref().unwrap();
+            last_chunk = chunk.clone();
+            chunk = chunk.chunk_to(x_norm, 0);
         }
         // Vertical
         for _ in 0..moves_ver {
             last_move = ver_dir;
-            last_chunk = chunk;
-            chunk = chunk.border[ver_dir].as_ref().unwrap();
+            last_chunk = chunk.clone();
+            chunk = chunk.chunk_to(0, y_norm);
         }
         // Point from last chunk
-        last_chunk.border[last_move].as_ref().unwrap().clone()
+        let chunk = last_chunk.border.borrow()[last_move].as_ref().unwrap().clone();
+        chunk
+    }
+    pub fn resize(&mut self, x: i64, y:i64){
+        // Info
+        let wrld_size = self.world_size();
+        let chunks_x = wrld_size.0 / CHUNK_SIZE;
+        let chunks_y = wrld_size.1 / CHUNK_SIZE;
+        let dir_x = x.signum();
+        let dir_y = y.signum();
+        // Horizontal resize
+        if x != 0{
+            // Get first chunk
+            let mut chunk = if dir_x == 1 {self.get_chunk((self.size.x2 / CHUNK_SIZE)-1, self.size.y1 / CHUNK_SIZE)} else {self.get_chunk(self.size.x1 / CHUNK_SIZE, self.size.y1 / CHUNK_SIZE)};
+            // Iterate over chunks add new neighbour
+            chunk.border.borrow_mut()[dir2index(dir_x, 0)] = Some(Rc::new(CellChunk::new()));
+            for _ in 0..chunks_y-1{
+                chunk = chunk.chunk_to(0, 1);
+                chunk.border.borrow_mut()[dir2index(dir_x, 0)] = Some(Rc::new(CellChunk::new()));
+            }
+            // Increase world size
+            if dir_x == 1 {
+                self.size.x2 += x*CHUNK_SIZE;
+            }else{
+                self.size.x1 += x*CHUNK_SIZE;
+            }
+        }
+        // Vertical resize
+        if y != 0{
+            let mut chunk = if dir_y == 1 {self.get_chunk(self.size.x1 / CHUNK_SIZE, (self.size.y2 / CHUNK_SIZE)-1)} else {self.get_chunk(self.size.x1 / CHUNK_SIZE, self.size.y1 / CHUNK_SIZE)};
+            chunk.border.borrow_mut()[dir2index(0, dir_y)] = Some(Rc::new(CellChunk::new()));
+            for _ in 0..chunks_x-1{
+                chunk = chunk.chunk_to(1, 0);
+                chunk.border.borrow_mut()[dir2index(0, dir_y)] = Some(Rc::new(CellChunk::new()));
+            }
+            if dir_y == 1 {
+                self.size.y2 += y*CHUNK_SIZE;
+            }else{
+                self.size.y1 += y*CHUNK_SIZE;
+            }
+        }
+    }
+    pub fn world_size(&self) -> (i64, i64){
+        (self.size.x2 - self.size.x1, self.size.y2 - self.size.y1)
     }
 }

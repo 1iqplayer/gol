@@ -74,6 +74,7 @@ pub mod app {
         }
 
         pub fn draw(&mut self){
+            // Draw cells
             let data = self.world.get_world(self.win_info);
             let win_size = self.win_info.size();
             for y in 0..win_size.y{
@@ -81,12 +82,26 @@ pub mod app {
                 for x in 0..win_size.x{
                     let cell = data[(x + (y*win_size.x)) as usize];
                     if cell{
-                        queue!(self.out, Print("#")).unwrap();
+                        queue!(self.out, SetBackgroundColor(Color::Cyan)).unwrap();
                     }else{
-                        queue!(self.out, Print(" ")).unwrap();
+                        queue!(self.out, SetBackgroundColor(Color::Black)).unwrap();
                     }
+                    queue!(self.out, Print(" ")).unwrap();
                 }
             }
+            // Draw info
+            let world_size = self.world.world_size();
+            let win_str = format!("X:{} Y:{} W:{} H:{}", self.win_info.x1, self.win_info.y1, win_size.x, win_size.y);
+            let wrld_str = format!("WORLD SIZE: {}W, {}H", world_size.0, world_size.1);
+            queue!(
+                self.out,
+                SetBackgroundColor(Color::White),
+                SetForegroundColor(Color::Black),
+                MoveTo((win_size.x - wrld_str.len() as i64) as u16, (win_size.y-2) as u16),
+                Print(wrld_str),
+                MoveTo((win_size.x - win_str.len() as i64) as u16, (win_size.y-1) as u16),
+                Print(win_str)
+            ).unwrap();
             self.out.flush().unwrap();
         }
         pub fn move_window(&mut self, x: i64, y:i64){
@@ -94,6 +109,10 @@ pub mod app {
             self.win_info.x2 += x;
             self.win_info.y1 += y;
             self.win_info.y2 += y;
+            self.draw();
+        }
+        pub fn resize(&mut self, x:i64, y:i64){
+            self.world.resize(x, y);
             self.draw();
         }
 
