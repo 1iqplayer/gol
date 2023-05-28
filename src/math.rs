@@ -16,7 +16,7 @@ impl Vec4<i64> {
             y2: (self.y1 - root.y1) + (self.y2 - self.y1),
         }
     }
-    pub fn size(&self)->Vec2<i64>{
+    pub fn size(&self) -> Vec2<i64> {
         Vec2::new(self.x2 - self.x1, self.y2 - self.y1)
     }
     pub fn intersect(&self, r2: &Vec4<i64>) -> Option<Vec4<i64>> {
