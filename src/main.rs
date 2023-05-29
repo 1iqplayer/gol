@@ -1,9 +1,6 @@
-use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
-use crossterm::style::Color;
+use crossterm::event::{Event, KeyCode};
 use crossterm::Result;
-use gol::app::App;
-use std::char;
-use std::time::Duration;
+use gol::App;
 
 fn main() -> Result<()> {
     let mut app = App::new()?;
