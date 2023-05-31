@@ -89,7 +89,7 @@ impl App {
             }
         }
         // Draw info
-        let world_size = self.world.size_raw();
+        let world_size = self.world.size();
         let win_str = format!(
             "WINDOW  X:{} Y:{} W:{} H:{}",
             self.win_info.x1, self.win_info.y1, win_size.x, win_size.y
@@ -125,7 +125,7 @@ impl App {
     }
     pub fn resize(&mut self, x: i64, y: i64) {
         self.world.resize(x, y);
-        self.draw();
+        //self.draw();
     }
 
     // pub fn show_msg<T: Display>(&mut self, msg: T, col: Color, duration: Duration) {

@@ -190,9 +190,9 @@ impl World {
                     self.size.x1 / CHUNK_SIZE
                 };
                 let chunk_y = self.size.y1 / CHUNK_SIZE;
+                let mut chunk = self.get_chunk(chunk_x, chunk_y);
                 // Iterate downards
                 let chunks_y = (self.size.y2 - self.size.y1) / CHUNK_SIZE;
-                let mut chunk = self.get_chunk(chunk_x, chunk_y);
                 chunk.border.borrow_mut()[dir2index(x.signum(), 0)] = Some(Rc::new(CellChunk::new()));
                 for _ in 0..chunks_y - 1 {
                     chunk = chunk.chunk_to(0, 1);
@@ -208,37 +208,17 @@ impl World {
             }
         }
         // ---------Y-----------
-        if y != 0 {
-            for _ in 0..y.abs(){
-                // Get first chunk
-                let chunk_y = if y.signum() == 1 {
-                    (self.size.y2 / CHUNK_SIZE) - 1
-                } else {
-                    self.size.y1 / CHUNK_SIZE
-                };
-                let chunk_x =  if self.size.x1 != 0 {self.size.x1 / CHUNK_SIZE} else {0};
-                // Iterate to right
-                let chunks_x = (self.size.x2 - self.size.x1) / CHUNK_SIZE;
-                let mut chunk = self.get_chunk(chunk_x, chunk_y);
-                chunk.border.borrow_mut()[dir2index(0, y.signum())] = Some(Rc::new(CellChunk::new()));
-                for _ in 0..chunks_x - 1 {
-                    chunk = chunk.chunk_to(1, 0);
-                    chunk.border.borrow_mut()[dir2index(0, y.signum())] =
-                        Some(Rc::new(CellChunk::new()));
-                }
-                // Increase world size
-                if y.signum() == 1 {
-                    self.size.y2 += CHUNK_SIZE;
-                } else {
-                    self.size.y1 -= CHUNK_SIZE;
-                }
-            }
-        }
     }
-    pub fn world_size(&self) -> Vec2<i64> {
-        Vec2::new(self.size.x2 - self.size.x1, self.size.y2 - self.size.y1)
+    fn connect(&self, chunk1: Rc<CellChunk>, chunk2: Rc<CellChunk>, x: i64, y: i64){
+        let mut border_1 = chunk1.border.borrow_mut();
+        let index_1 = dir2index(x, y);
+        let mut border_2 = chunk2.border.borrow_mut();
+        let index_2 = dir2index(-x, -y);
+        border_1[index_1] = Some(chunk2.clone());
+        border_2[index_2] = Some(chunk1.clone());
     }
-    pub fn size_raw(&self) -> Vec4<i64> {
+    pub fn size(&self) -> Vec4<i64> {
         self.size
     }
+    
 }
