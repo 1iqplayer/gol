@@ -1,8 +1,8 @@
-use std::{cell::RefCell, rc::Rc, vec};
+use std::{cell::RefCell, rc::Rc, vec, time::{Instant, Duration}};
 
 use crate::math::*;
 
-const CHUNK_SIZE: i64 = 8;
+const CHUNK_SIZE: i64 = 13;
 struct Cells([bool; (CHUNK_SIZE * CHUNK_SIZE) as usize]);
 impl Cells {
     fn get(&self, x: usize, y: usize) -> bool {
@@ -10,6 +10,17 @@ impl Cells {
     }
     fn set(&mut self, x: usize, y: usize, val: bool) {
         self.0[x + (y * CHUNK_SIZE as usize)] = val;
+    }
+    fn new() -> Self{
+        let mut cells = [false; (CHUNK_SIZE*CHUNK_SIZE)as usize];
+        for x in 0..CHUNK_SIZE{
+            for y in 0..CHUNK_SIZE{
+                if x == 0 || y == 0 || x == CHUNK_SIZE-1 || y == CHUNK_SIZE-1{
+                    cells[(x + y*CHUNK_SIZE) as usize] = true;
+                }
+            }
+        }
+        Cells(cells)
     }
 }
 pub struct CellChunk {
@@ -20,7 +31,7 @@ impl CellChunk {
     pub fn new() -> Self {
         CellChunk {
             border: RefCell::new(CellChunk::empty_chunks()),
-            cells: RefCell::new(Cells([true; CHUNK_SIZE as usize * CHUNK_SIZE as usize])),
+            cells: RefCell::new(Cells::new()),
         }
     }
     fn empty_chunks() -> [Option<Rc<CellChunk>>; 8] {
@@ -59,14 +70,16 @@ impl World {
         }
     }
 
-    pub fn get_world(&self, win: Vec4<i64>) -> Vec<bool> {
+    pub fn get_world(&self, win: Vec4<i64>) -> (Vec<bool>, Duration) {
+        // Time
+        let time = Instant::now();
         // Data
         let win_size = win.size();
         let mut data = vec![false; (win_size.x * win_size.y) as usize];
         // Calculate where window intersects with living world
         let contact = win.intersect(&self.size);
         if contact.is_none() {
-            return data;
+            return (data, time.elapsed());
         }
         let contact = contact.unwrap();
         // Calculate needed chunks
@@ -119,7 +132,8 @@ impl World {
                 }
             }
         }
-        data
+        // Time
+        (data, time.elapsed())
     }
     fn get_chunk(&self, x: i64, y: i64) -> Rc<CellChunk> {
         if x == 0 && y == 0 {
@@ -190,15 +204,27 @@ impl World {
                     self.size.x1 / CHUNK_SIZE
                 };
                 let chunk_y = self.size.y1 / CHUNK_SIZE;
-                let mut chunk = self.get_chunk(chunk_x, chunk_y);
-                // Iterate downards
-                let chunks_y = (self.size.y2 - self.size.y1) / CHUNK_SIZE;
-                chunk.border.borrow_mut()[dir2index(x.signum(), 0)] = Some(Rc::new(CellChunk::new()));
-                for _ in 0..chunks_y - 1 {
-                    chunk = chunk.chunk_to(0, 1);
-                    chunk.border.borrow_mut()[dir2index(x.signum(), 0)] =
-                        Some(Rc::new(CellChunk::new()));
+                let chunk = self.get_chunk(chunk_x, chunk_y);
+
+                // Create first new chunk
+                let mut new_last = Rc::new(CellChunk::new());
+                let mut border_last = chunk;
+                self.connect(&border_last, &new_last, x.signum(), 0);
+                // Iterate downards if necessary 
+                let chunk_count = (self.size.y2 - self.size.y1) / CHUNK_SIZE;
+                for _ in 0..chunk_count-1{
+                    let new = Rc::new(CellChunk::new());
+                    let border = border_last.chunk_to(0, 1);
+
+                    self.connect(&new, &new_last, 0, -1);
+                    self.connect(&new, &border_last, -x.signum(), -1);
+                    self.connect(&new, &border, -x.signum(), 0);
+                    self.connect(&border, &new_last, x.signum(), -1);
+
+                    new_last = new;
+                    border_last = border;
                 }
+
                 // Increase world size
                 if x.signum() == 1 {
                     self.size.x2 += CHUNK_SIZE;
@@ -208,14 +234,48 @@ impl World {
             }
         }
         // ---------Y-----------
+        if y != 0 {
+            for _ in 0..y.abs(){
+                // Get first chunk
+                let chunk_y = if y.signum() == 1 {
+                    (self.size.y2 / CHUNK_SIZE) - 1
+                } else {
+                    self.size.y1 / CHUNK_SIZE
+                };
+                let chunk_x = self.size.x1 / CHUNK_SIZE;
+                let chunk = self.get_chunk(chunk_x, chunk_y);
+
+                // Create first new chunk
+                let mut new_last = Rc::new(CellChunk::new());
+                let mut border_last = chunk;
+                self.connect(&border_last, &new_last, 0, y.signum());
+                // Iterate right if necessary 
+                let chunk_count = (self.size.x2 - self.size.x1) / CHUNK_SIZE;
+                for _ in 0..chunk_count-1{
+                    let new = Rc::new(CellChunk::new());
+                    let border = border_last.chunk_to(1, 0);
+
+                    self.connect(&new, &new_last, -1, 0);
+                    self.connect(&new, &border_last, -1, -y.signum());
+                    self.connect(&new, &border, 0, -y.signum());
+                    self.connect(&border, &new_last, -1, y.signum());
+
+                    new_last = new;
+                    border_last = border;
+                }
+
+                // Increase world size
+                if y.signum() == 1 {
+                    self.size.y2 += CHUNK_SIZE;
+                } else {
+                    self.size.y1 -= CHUNK_SIZE;
+                }
+            }
+        }
     }
-    fn connect(&self, chunk1: Rc<CellChunk>, chunk2: Rc<CellChunk>, x: i64, y: i64){
-        let mut border_1 = chunk1.border.borrow_mut();
-        let index_1 = dir2index(x, y);
-        let mut border_2 = chunk2.border.borrow_mut();
-        let index_2 = dir2index(-x, -y);
-        border_1[index_1] = Some(chunk2.clone());
-        border_2[index_2] = Some(chunk1.clone());
+    fn connect(&self, chunk1: &Rc<CellChunk>, chunk2: &Rc<CellChunk>, x: i64, y: i64){
+        chunk1.border.borrow_mut()[dir2index(x, y)] = Some(chunk2.clone());
+        chunk2.border.borrow_mut()[dir2index(-x, -y)] = Some(chunk1.clone());
     }
     pub fn size(&self) -> Vec4<i64> {
         self.size

@@ -5,6 +5,7 @@ use crate::math::*;
 use crossterm::cursor::{Hide, MoveDown, MoveTo, Show};
 use crossterm::event;
 use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
+use crossterm::terminal::SetSize;
 use crossterm::terminal::{
     self, disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
     SetTitle,
@@ -13,6 +14,8 @@ use crossterm::Result;
 use crossterm::{execute, queue};
 use std::io::Write;
 use std::io::{stdout, Stdout};
+use std::time::Duration;
+use std::time::Instant;
 pub struct App {
     pub run: bool,
     win_info_init: Vec2<u16>,
@@ -46,8 +49,14 @@ impl App {
             EnterAlternateScreen,
             SetTitle("GAME OF LIFE"),
             event::EnableMouseCapture,
-            Hide
+            Hide,
+            SetSize(999, 999)
         )?;
+        std::thread::sleep(Duration::from_millis(300));
+        let win_size = crossterm::terminal::size()?;
+        self.win_info.x2 = self.win_info.x1 + win_size.0 as i64;
+        self.win_info.y2 = self.win_info.y1 + win_size.1 as i64;
+        self.draw();
         Ok(())
     }
 
@@ -56,7 +65,7 @@ impl App {
         execute!(
             self.out,
             LeaveAlternateScreen,
-            terminal::SetSize(self.win_info_init.x, self.win_info_init.y),
+            SetSize(self.win_info_init.x, self.win_info_init.y),
             Show
         )
         .unwrap();
@@ -73,8 +82,10 @@ impl App {
     }
 
     pub fn draw(&mut self) {
+        // Time
+        let draw_time = Instant::now();
         // Draw cells
-        let data = self.world.get_world(self.win_info);
+        let (data, data_time) = self.world.get_world(self.win_info);
         let win_size = self.win_info.size();
         for y in 0..win_size.y {
             queue!(self.out, MoveTo(0, y as u16)).unwrap();
@@ -98,10 +109,19 @@ impl App {
             "WORLD  X1:{} Y1:{} X2:{} Y2:{}",
             world_size.x1, world_size.y1, world_size.x2, world_size.y2
         );
+        let time_str = format!(
+            "GETTING WORLD:{}us  DRAW:{}ms",
+            data_time.as_micros(), draw_time.elapsed().as_millis()
+        );
         queue!(
             self.out,
             SetBackgroundColor(Color::White),
             SetForegroundColor(Color::Black),
+            MoveTo(
+                (win_size.x - time_str.len() as i64) as u16,
+                (win_size.y - 3) as u16
+            ),
+            Print(time_str),
             MoveTo(
                 (win_size.x - wrld_str.len() as i64) as u16,
                 (win_size.y - 2) as u16
@@ -125,7 +145,7 @@ impl App {
     }
     pub fn resize(&mut self, x: i64, y: i64) {
         self.world.resize(x, y);
-        //self.draw();
+        self.draw();
     }
 
     // pub fn show_msg<T: Display>(&mut self, msg: T, col: Color, duration: Duration) {

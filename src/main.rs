@@ -1,5 +1,6 @@
 use crossterm::event::{Event, KeyCode};
-use crossterm::Result;
+use crossterm::terminal::SetSize;
+use crossterm::{Result, execute};
 use gol::App;
 
 fn main() -> Result<()> {
@@ -25,16 +26,16 @@ fn handle_key(app: &mut App, k: KeyCode) {
             app.exit();
         }
         KeyCode::Left => {
-            app.move_window(-1, 0);
+            app.move_window(-2, 0);
         }
         KeyCode::Right => {
-            app.move_window(1, 0);
+            app.move_window(2, 0);
         }
         KeyCode::Up => {
-            app.move_window(0, -1);
+            app.move_window(0, -2);
         }
         KeyCode::Down => {
-            app.move_window(0, 1);
+            app.move_window(0, 2);
         }
         KeyCode::Char(c) => {
             match c {
