@@ -3,7 +3,8 @@ mod math;
 use crate::gol::*;
 use crate::math::*;
 use crossterm::cursor::{Hide, MoveDown, MoveTo, Show};
-use crossterm::event;
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::{self, KeyCode, MouseButton, MouseEventKind, MouseEvent};
 use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
 use crossterm::terminal::SetSize;
 use crossterm::terminal::{
@@ -22,6 +23,7 @@ pub struct App {
     win_info: Vec4<i64>,
     pub out: Stdout,
     world: World,
+    pub mouse_pos: Vec2<u16>
 }
 
 impl App {
@@ -39,7 +41,8 @@ impl App {
             },
             out: stdout(),
             world: World::new(),
-        };
+            mouse_pos: Vec2::new(0, 0)
+        };  
         Ok(a)
     }
     pub fn start(&mut self) -> Result<()> {
@@ -50,7 +53,7 @@ impl App {
             SetTitle("GAME OF LIFE"),
             event::EnableMouseCapture,
             Hide,
-            SetSize(999, 999)
+            SetSize(0, 0)
         )?;
         std::thread::sleep(Duration::from_millis(300));
         let win_size = crossterm::terminal::size()?;
@@ -62,11 +65,12 @@ impl App {
 
     pub fn exit(&mut self) {
         disable_raw_mode().unwrap();
-        execute!(
+        execute!(   
             self.out,
             LeaveAlternateScreen,
             SetSize(self.win_info_init.x, self.win_info_init.y),
-            Show
+            Show,
+            DisableMouseCapture
         )
         .unwrap();
         self.run = false;
@@ -143,8 +147,60 @@ impl App {
         self.win_info.y2 += y;
         self.draw();
     }
-    pub fn resize(&mut self, x: i64, y: i64) {
-        self.world.resize(x, y);
+
+    pub fn handle_key(&mut self, k: KeyCode) {
+        match k {
+            KeyCode::Enter => {
+                self.draw();
+            }
+            KeyCode::Esc => {
+                self.exit();
+            }
+            KeyCode::Left => {
+                self.move_window(-2, 0);
+            }
+            KeyCode::Right => {
+                self.move_window(2, 0);
+            }
+            KeyCode::Up => {
+                self.move_window(0, -2);
+            }
+            KeyCode::Down => {
+                self.move_window(0, 2);
+            }
+            KeyCode::Char(c) => {
+                match c {
+                    _ => {}
+                }
+                {}
+            }
+            _ => {}
+        }
+    }
+
+    pub fn handle_mouse(&mut self, ev: MouseEvent){
+        match ev.kind{
+            MouseEventKind::Moved =>{
+                self.mouse_pos.x = ev.column;
+                self.mouse_pos.y = ev.row;
+            },
+            MouseEventKind::Drag(b) => {
+                if b == MouseButton::Right{
+                    self.move_window(
+                    self.mouse_pos.x as i64 - ev.column as i64,
+                    self.mouse_pos.y as i64 - ev.row as i64
+                    )
+                }
+                self.mouse_pos.x = ev.column;
+                self.mouse_pos.y = ev.row;
+            }
+            _ => {}
+        }
+    }
+    
+    pub fn handle_resize(&mut self, w: u16, h:u16){
+        self.win_info.x2 = self.win_info.x1 + w as i64;
+        self.win_info.y2 = self.win_info.y1 + h as i64;
         self.draw();
     }
 
