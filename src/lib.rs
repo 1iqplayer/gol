@@ -53,12 +53,7 @@ impl App {
             SetTitle("GAME OF LIFE"),
             event::EnableMouseCapture,
             Hide,
-            SetSize(0, 0)
         )?;
-        std::thread::sleep(Duration::from_millis(300));
-        let win_size = crossterm::terminal::size()?;
-        self.win_info.x2 = self.win_info.x1 + win_size.0 as i64;
-        self.win_info.y2 = self.win_info.y1 + win_size.1 as i64;
         self.draw();
         Ok(())
     }
@@ -193,6 +188,30 @@ impl App {
                 }
                 self.mouse_pos.x = ev.column;
                 self.mouse_pos.y = ev.row;
+
+                if b == MouseButton::Left{
+                    let cell_x= ev.column as i64 + self.win_info.x1;
+                    let cell_y = ev.row as i64 + self.win_info.y1;
+                    self.world.set_cell(cell_x, cell_y, true);
+                    self.draw();
+                }
+            }
+            MouseEventKind::Down(b) => {
+                match b{
+                    MouseButton::Left=>{
+                        // Local to absolute cells coords
+                        let cell_x= ev.column as i64 + self.win_info.x1;
+                        let cell_y = ev.row as i64 + self.win_info.y1;
+                        self.world.set_cell(cell_x, cell_y, true);
+                        self.draw();
+                    }
+                    MouseButton::Right=>{
+
+                    }
+                    MouseButton::Middle=>{
+
+                    }
+                }
             }
             _ => {}
         }

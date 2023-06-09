@@ -280,5 +280,35 @@ impl World {
     pub fn size(&self) -> Vec4<i64> {
         self.size
     }
+
+    pub fn set_cell(&mut self, x: i64, y: i64, state: bool){
+        // Cell out of world borders
+        let mut expand_x = 0;
+        let mut expand_y = 0;
+        if x > self.size.x2 {
+            expand_x = ((x - self.size.x2) as f64 / x as f64).ceil() as i64;
+        }
+        if x < self.size.x1 {
+            expand_x = ((x - self.size.x1) as f64 / x as f64).floor() as i64;
+        }
+        if y > self.size.y2 {
+            expand_y = ((y - self.size.y2) as f64 / y as f64).ceil() as i64;
+        }
+        if y < self.size.y1 {
+            expand_y = ((y - self.size.y1) as f64 / y as f64).floor() as i64;
+        }
+        if expand_x != 0 || expand_y != 0{
+            self.resize(expand_x, expand_y);
+        }
+        // Locate chunk
+        let chunk_x = (x as f64 / CHUNK_SIZE as f64).floor() as i64;
+        let chunk_y = (y as f64 / CHUNK_SIZE as f64).floor() as i64;
+        let chunk = self.get_chunk(chunk_x, chunk_y);
+        chunk.cells.borrow_mut().set(
+            (x - (chunk_x * CHUNK_SIZE)) as usize, 
+            (y - (chunk_y * CHUNK_SIZE)) as usize, 
+            true
+        );
+    }
     
 }
