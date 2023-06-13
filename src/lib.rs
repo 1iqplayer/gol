@@ -91,11 +91,11 @@ impl App {
             for x in 0..win_size.x {
                 let cell = data[(x + (y * win_size.x)) as usize];
                 if cell {
-                    queue!(self.out, SetBackgroundColor(Color::Cyan)).unwrap();
+                    queue!(self.out, SetForegroundColor(Color::Cyan)).unwrap();
                 } else {
-                    queue!(self.out, SetBackgroundColor(Color::Black)).unwrap();
+                    queue!(self.out, SetForegroundColor(Color::Black)).unwrap();
                 }
-                queue!(self.out, Print(" ")).unwrap();
+                queue!(self.out, Print("#")).unwrap();
             }
         }
         // Draw info
@@ -114,8 +114,7 @@ impl App {
         );
         queue!(
             self.out,
-            SetBackgroundColor(Color::White),
-            SetForegroundColor(Color::Black),
+            SetForegroundColor(Color::White),
             MoveTo(
                 (win_size.x - time_str.len() as i64) as u16,
                 (win_size.y - 3) as u16

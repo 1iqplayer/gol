@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, vec, time::{Instant, Duration}};
+use std::{cell::RefCell, rc::Rc, vec, time::{Instant, Duration}, collections::HashMap};
 
 use crate::math::*;
 
@@ -12,26 +12,31 @@ impl Cells {
         self.0[x + (y * CHUNK_SIZE as usize)] = val;
     }
     fn new() -> Self{
-        let mut cells = [false; (CHUNK_SIZE*CHUNK_SIZE)as usize];
-        for x in 0..CHUNK_SIZE{
-            for y in 0..CHUNK_SIZE{
-                if x == 0 || y == 0 || x == CHUNK_SIZE-1 || y == CHUNK_SIZE-1{
-                    cells[(x + y*CHUNK_SIZE) as usize] = true;
-                }
-            }
-        }
-        Cells(cells)
+        // let mut cells = [false; (CHUNK_SIZE*CHUNK_SIZE)as usize];
+        // for x in 0..CHUNK_SIZE{
+        //     for y in 0..CHUNK_SIZE{
+        //         if x == 0 || y == 0 || x == CHUNK_SIZE-1 || y == CHUNK_SIZE-1{
+        //             cells[(x + y*CHUNK_SIZE) as usize] = true;
+        //         }
+        //     }
+        // }
+        // Cells(cells)
+        Cells([false; (CHUNK_SIZE*CHUNK_SIZE) as usize])
     }
 }
 pub struct CellChunk {
     border: RefCell<[Option<Rc<CellChunk>>; 8]>,
     cells: RefCell<Cells>,
+    alive : RefCell<HashMap<(i16, i16), ()>>,
+    check: RefCell<HashMap<(i16, i16), ()>>
 }
 impl CellChunk {
     pub fn new() -> Self {
         CellChunk {
             border: RefCell::new(CellChunk::empty_chunks()),
             cells: RefCell::new(Cells::new()),
+            alive : RefCell::new(HashMap::new()),
+            check: RefCell::new(HashMap::new())
         }
     }
     fn empty_chunks() -> [Option<Rc<CellChunk>>; 8] {
@@ -52,10 +57,19 @@ impl CellChunk {
             .unwrap()
             .clone()
     }
+    pub fn update(&self, wrld: &World) ->{
+        
+    }
+    fn get_cell(&self, x: i16, y:i16){
+        if x < 0 || x >= CHUNK_SIZE as i16 || y < 0 || y>=CHUNK_SIZE as i16{
+
+        }
+    }
 }
 pub struct World {
     size: Vec4<i64>,
     root: Rc<CellChunk>,
+    alive_chunks: HashMap<(i64, i64), ()>
 }
 impl World {
     pub fn new() -> Self {
@@ -67,6 +81,7 @@ impl World {
                 y2: CHUNK_SIZE,
             },
             root: Rc::new(CellChunk::new()),
+            alive_chunks: HashMap::new()
         }
     }
 
@@ -89,7 +104,7 @@ impl World {
             0
         };
         let chunk_x_end = if contact.x2 != 0 {
-            ((contact.x2 as f64 - 0.001) / CHUNK_SIZE as f64) as i64
+            ((contact.x2 - 1) as f64 / CHUNK_SIZE as f64) as i64
         } else {
             0
         };
@@ -99,7 +114,7 @@ impl World {
             0
         };
         let chunk_y_end = if contact.y2 != 0 {
-            ((contact.y2 as f64 - 0.001) / CHUNK_SIZE as f64) as i64
+            ((contact.y2 - 1) as f64 / CHUNK_SIZE as f64) as i64
         } else {
             0
         };
@@ -285,30 +300,64 @@ impl World {
         // Cell out of world borders
         let mut expand_x = 0;
         let mut expand_y = 0;
-        if x > self.size.x2 {
-            expand_x = ((x - self.size.x2) as f64 / x as f64).ceil() as i64;
+        if x >= self.size.x2 {
+            expand_x = ((x - self.size.x2+1) as f64 / CHUNK_SIZE as f64).ceil() as i64;
         }
-        if x < self.size.x1 {
-            expand_x = ((x - self.size.x1) as f64 / x as f64).floor() as i64;
+        if x <= self.size.x1 {
+            expand_x = ((x - self.size.x1 - 1) as f64 / CHUNK_SIZE as f64).floor() as i64;
         }
-        if y > self.size.y2 {
-            expand_y = ((y - self.size.y2) as f64 / y as f64).ceil() as i64;
+        if y >= self.size.y2 {
+            expand_y = ((y - self.size.y2 + 1) as f64 / CHUNK_SIZE as f64).ceil() as i64;
         }
-        if y < self.size.y1 {
-            expand_y = ((y - self.size.y1) as f64 / y as f64).floor() as i64;
+        if y <= self.size.y1 {
+            expand_y = ((y - self.size.y1 - 1) as f64 / CHUNK_SIZE as f64).floor() as i64;
         }
         if expand_x != 0 || expand_y != 0{
             self.resize(expand_x, expand_y);
         }
         // Locate chunk
-        let chunk_x = (x as f64 / CHUNK_SIZE as f64).floor() as i64;
-        let chunk_y = (y as f64 / CHUNK_SIZE as f64).floor() as i64;
-        let chunk = self.get_chunk(chunk_x, chunk_y);
+        let chunk_x = ((x) as f64 / CHUNK_SIZE as f64).floor() as i64;
+        let chunk_y = ((y) as f64 / CHUNK_SIZE as f64).floor() as i64;
+        let cell_x = (x - (chunk_x * CHUNK_SIZE)) as usize;
+        let cell_y = (y - (chunk_y * CHUNK_SIZE)) as usize;
+        self.alive_chunks.insert((chunk_x, chunk_y), ());
+        // Set chunk
+        let chunk =  self.get_chunk(chunk_x, chunk_y);
         chunk.cells.borrow_mut().set(
-            (x - (chunk_x * CHUNK_SIZE)) as usize, 
-            (y - (chunk_y * CHUNK_SIZE)) as usize, 
-            true
+            cell_x, 
+            cell_y, 
+            state
         );
+        chunk.alive.borrow_mut().insert((cell_x as i16, cell_y as i16), ());
+    }
+    pub fn life_step(&mut self){
+        // Check alive cells 
+        for (pos, _) in self.alive_chunks.iter_mut(){
+            let chunk = self.get_chunk(pos.0, pos.1);
+            let mut alive = chunk.alive.borrow_mut();
+            let mut check = chunk.check.borrow_mut();
+            let mut cells = chunk.cells.borrow_mut();
+            let mut count = 0;
+            // Check sourroundings
+            for (cell_pos, _) in alive.iter_mut(){
+                for i in 0..8{
+                    let x = cell_pos.0 + index2dir(i).0;
+                    let y = cell_pos.1 + index2dir(i).1;
+                    // Check if its in sourorunding chunk
+                    if x < 0 || x >= CHUNK_SIZE as i16 || y < 0 || y >= CHUNK_SIZE as i16
+                    {
+                        let dir_x = if x < 0 || x >= CHUNK_SIZE as i16 {x.signum()} else {0};
+                        let dir_y = if y < 0 || y >= CHUNK_SIZE as i16 {y.signum()} else {0};
+                        let mut chunk = chunk.chunk_to(dir_x as i64, dir_y as i64);
+                        if chunk.alive.borrow_mut().get(k)
+                    }else
+                    {
+
+                    }
+                }
+            }
+        }
+        // Check surrounding cells
     }
     
 }
