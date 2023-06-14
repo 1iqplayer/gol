@@ -2,11 +2,11 @@ use std::{cell::RefCell, rc::Rc, vec, time::{Instant, Duration}, collections::Ha
 
 use crate::math::*;
 
-const CHUNK_SIZE: i64 = 13;
+const CHUNK_SIZE: i16 = 13;
 struct Cells([bool; (CHUNK_SIZE * CHUNK_SIZE) as usize]);
 impl Cells {
-    fn get(&self, x: usize, y: usize) -> bool {
-        self.0[x + (y * CHUNK_SIZE as usize)]
+    fn get(&self, x: i16, y: i16) -> bool {
+        self.0[x as usize + (y  * CHUNK_SIZE) as usize]
     }
     fn set(&mut self, x: usize, y: usize, val: bool) {
         self.0[x + (y * CHUNK_SIZE as usize)] = val;
@@ -57,14 +57,54 @@ impl CellChunk {
             .unwrap()
             .clone()
     }
-    pub fn update(&self, wrld: &World) ->{
-        
+    pub fn get_cell(&self, x: i16, y:i16) -> Option<bool>{
+        let val:bool;
+        if x < 0 || x >= CHUNK_SIZE as i16 || y < 0 || y >= CHUNK_SIZE as i16{
+            // direction to neighbour chunk
+            let chunk_x = if x < 0 || x >= CHUNK_SIZE as i16 {
+                x.signum()
+            }else{
+                0
+            };
+            let chunk_y = if y < 0 || y >= CHUNK_SIZE as i16 {
+                y.signum()
+            }else{
+                0
+            };
+            let cell_x = if chunk_x == 0 {x} else {chunk_x};
+            let cell_y = if chunk_y == 0 {y} else {chunk_y};
+            let chunk = &self.border.borrow()[dir2index(cell_x as i64, cell_y as i64)];
+            if chunk.is_none() {return None}
+            val = chunk.as_ref().unwrap().cells.borrow().get(cell_x, cell_y);
+            
+        }else{
+            val = self.cells.borrow().get(x, y);
+        }
+        Some(val)
     }
-    fn get_cell(&self, x: i16, y:i16){
-        if x < 0 || x >= CHUNK_SIZE as i16 || y < 0 || y>=CHUNK_SIZE as i16{
-
+    pub fn set_check(&self, x: i16, y: i16){
+        if x < 0 || x >= CHUNK_SIZE as i16 || y < 0 || y >= CHUNK_SIZE as i16{
+            let chunk_x = if x < 0 || x >= CHUNK_SIZE as i16 {
+                x.signum()
+            }else{
+                0
+            };
+            let chunk_y = if y < 0 || y >= CHUNK_SIZE as i16 {
+                y.signum()
+            }else{
+                0
+            };
+            let cell_x = if chunk_x == 0 {x} else {chunk_x};
+            let cell_y = if chunk_y == 0 {y} else {chunk_y};
+            let chunk = &self.border.borrow()[dir2index(cell_x as i64, cell_y as i64)];
+            if chunk.is_some(){
+                chunk.as_ref().unwrap().check.borrow_mut().insert((x, y), ());
+            }
+        }else{
+            self.check.borrow_mut().insert((x, y), ());
         }
     }
+
 }
 pub struct World {
     size: Vec4<i64>,
@@ -77,8 +117,8 @@ impl World {
             size: Vec4 {
                 x1: 0,
                 y1: 0,
-                x2: CHUNK_SIZE,
-                y2: CHUNK_SIZE,
+                x2: CHUNK_SIZE as i64,
+                y2: CHUNK_SIZE as i64,
             },
             root: Rc::new(CellChunk::new()),
             alive_chunks: HashMap::new()
@@ -121,11 +161,12 @@ impl World {
         // Iterate over chunks
         for chunk_y in chunk_y_start..=chunk_y_end {
             for chunk_x in chunk_x_start..=chunk_x_end {
+                let chunk_size = CHUNK_SIZE as i64;
                 let chunk_rect = Vec4 {
-                    x1: chunk_x * CHUNK_SIZE,
-                    x2: chunk_x * CHUNK_SIZE + CHUNK_SIZE,
-                    y1: chunk_y * CHUNK_SIZE,
-                    y2: chunk_y * CHUNK_SIZE + CHUNK_SIZE,
+                    x1: chunk_x * chunk_size,
+                    x2: chunk_x * chunk_size + chunk_size,
+                    y1: chunk_y * chunk_size,
+                    y2: chunk_y * chunk_size + chunk_size,
                 };
                 // Which cells are needed
                 let needed = contact.intersect(&chunk_rect);
@@ -139,8 +180,8 @@ impl World {
                 // Iterate over needed cells and inject them to buffer
                 for x in needed.x1..needed.x2 {
                     for y in needed.y1..needed.y2 {
-                        let cell_x = (x - chunk_rect.x1) as usize;
-                        let cell_y = (y - chunk_rect.y1) as usize;
+                        let cell_x = (x - chunk_rect.x1) as i16;
+                        let cell_y = (y - chunk_rect.y1) as i16;
                         data[((x - win.x1) + ((y - win.y1) * win_size.x)) as usize] =
                             cells.get(cell_x, cell_y);
                     }
@@ -214,11 +255,11 @@ impl World {
             for _ in 0..x.abs(){
                 // Get first chunk
                 let chunk_x = if x.signum() == 1 {
-                    (self.size.x2 / CHUNK_SIZE) - 1
+                    (self.size.x2 / CHUNK_SIZE as i64) - 1
                 } else {
-                    self.size.x1 / CHUNK_SIZE
+                    self.size.x1 / CHUNK_SIZE as i64
                 };
-                let chunk_y = self.size.y1 / CHUNK_SIZE;
+                let chunk_y = self.size.y1 / CHUNK_SIZE as i64;
                 let chunk = self.get_chunk(chunk_x, chunk_y);
 
                 // Create first new chunk
@@ -226,7 +267,7 @@ impl World {
                 let mut border_last = chunk;
                 self.connect(&border_last, &new_last, x.signum(), 0);
                 // Iterate downards if necessary 
-                let chunk_count = (self.size.y2 - self.size.y1) / CHUNK_SIZE;
+                let chunk_count = (self.size.y2 - self.size.y1) / CHUNK_SIZE as i64;
                 for _ in 0..chunk_count-1{
                     let new = Rc::new(CellChunk::new());
                     let border = border_last.chunk_to(0, 1);
@@ -242,9 +283,9 @@ impl World {
 
                 // Increase world size
                 if x.signum() == 1 {
-                    self.size.x2 += CHUNK_SIZE;
+                    self.size.x2 += CHUNK_SIZE as i64;
                 } else {
-                    self.size.x1 -= CHUNK_SIZE;
+                    self.size.x1 -= CHUNK_SIZE as i64;
                 }
             }
         }
@@ -253,11 +294,11 @@ impl World {
             for _ in 0..y.abs(){
                 // Get first chunk
                 let chunk_y = if y.signum() == 1 {
-                    (self.size.y2 / CHUNK_SIZE) - 1
+                    (self.size.y2 / CHUNK_SIZE as i64) - 1
                 } else {
-                    self.size.y1 / CHUNK_SIZE
+                    self.size.y1 / CHUNK_SIZE as i64
                 };
-                let chunk_x = self.size.x1 / CHUNK_SIZE;
+                let chunk_x = self.size.x1 / CHUNK_SIZE as i64;
                 let chunk = self.get_chunk(chunk_x, chunk_y);
 
                 // Create first new chunk
@@ -265,7 +306,7 @@ impl World {
                 let mut border_last = chunk;
                 self.connect(&border_last, &new_last, 0, y.signum());
                 // Iterate right if necessary 
-                let chunk_count = (self.size.x2 - self.size.x1) / CHUNK_SIZE;
+                let chunk_count = (self.size.x2 - self.size.x1) / CHUNK_SIZE as i64;
                 for _ in 0..chunk_count-1{
                     let new = Rc::new(CellChunk::new());
                     let border = border_last.chunk_to(1, 0);
@@ -281,9 +322,9 @@ impl World {
 
                 // Increase world size
                 if y.signum() == 1 {
-                    self.size.y2 += CHUNK_SIZE;
+                    self.size.y2 += CHUNK_SIZE as i64;
                 } else {
-                    self.size.y1 -= CHUNK_SIZE;
+                    self.size.y1 -= CHUNK_SIZE as i64;
                 }
             }
         }
@@ -318,8 +359,8 @@ impl World {
         // Locate chunk
         let chunk_x = ((x) as f64 / CHUNK_SIZE as f64).floor() as i64;
         let chunk_y = ((y) as f64 / CHUNK_SIZE as f64).floor() as i64;
-        let cell_x = (x - (chunk_x * CHUNK_SIZE)) as usize;
-        let cell_y = (y - (chunk_y * CHUNK_SIZE)) as usize;
+        let cell_x = (x - (chunk_x * CHUNK_SIZE as i64)) as usize;
+        let cell_y = (y - (chunk_y * CHUNK_SIZE as i64)) as usize;
         self.alive_chunks.insert((chunk_x, chunk_y), ());
         // Set chunk
         let chunk =  self.get_chunk(chunk_x, chunk_y);
@@ -331,33 +372,8 @@ impl World {
         chunk.alive.borrow_mut().insert((cell_x as i16, cell_y as i16), ());
     }
     pub fn life_step(&mut self){
-        // Check alive cells 
-        for (pos, _) in self.alive_chunks.iter_mut(){
-            let chunk = self.get_chunk(pos.0, pos.1);
-            let mut alive = chunk.alive.borrow_mut();
-            let mut check = chunk.check.borrow_mut();
-            let mut cells = chunk.cells.borrow_mut();
-            let mut count = 0;
-            // Check sourroundings
-            for (cell_pos, _) in alive.iter_mut(){
-                for i in 0..8{
-                    let x = cell_pos.0 + index2dir(i).0;
-                    let y = cell_pos.1 + index2dir(i).1;
-                    // Check if its in sourorunding chunk
-                    if x < 0 || x >= CHUNK_SIZE as i16 || y < 0 || y >= CHUNK_SIZE as i16
-                    {
-                        let dir_x = if x < 0 || x >= CHUNK_SIZE as i16 {x.signum()} else {0};
-                        let dir_y = if y < 0 || y >= CHUNK_SIZE as i16 {y.signum()} else {0};
-                        let mut chunk = chunk.chunk_to(dir_x as i64, dir_y as i64);
-                        if chunk.alive.borrow_mut().get(k)
-                    }else
-                    {
-
-                    }
-                }
-            }
-        }
-        // Check surrounding cells
+        // Check live cells
+        // Check surroundings
     }
     
 }
