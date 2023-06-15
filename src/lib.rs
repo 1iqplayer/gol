@@ -145,7 +145,7 @@ impl App {
     pub fn handle_key(&mut self, k: KeyCode) {
         match k {
             KeyCode::Enter => {
-                self.draw();
+                self.world.life_step();
             }
             KeyCode::Esc => {
                 self.exit();
