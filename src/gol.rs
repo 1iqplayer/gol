@@ -1,8 +1,8 @@
-use std::{cell::RefCell, rc::Rc, vec, time::{Instant, Duration}, collections::HashMap, borrow::BorrowMut};
+use std::{cell::{RefCell, Cell}, rc::Rc, vec, time::{Instant, Duration}, collections::HashMap, borrow::BorrowMut};
 
 use crate::math::*;
 
-const CHUNK_SIZE: i16 = 13;
+const CHUNK_SIZE: i16 = 6;
 struct Cells([bool; (CHUNK_SIZE * CHUNK_SIZE) as usize]);
 impl Cells {
     fn get(&self, x: i16, y: i16) -> bool {
@@ -57,34 +57,32 @@ impl CellChunk {
             .unwrap()
             .clone()
     }
-    pub fn get_cell(&self, x: i16, y:i16) -> Option<bool>{
+    pub fn get_cell(&self, x: i16, y:i16) -> bool{
         if x < 0 || x >= CHUNK_SIZE as i16 || y < 0 || y >= CHUNK_SIZE as i16{
             // direction to neighbour chunk
-            let chunk_x = if x < 0 || x >= CHUNK_SIZE as i16 {x.signum()} else {0};
-            let chunk_y = if y < 0 || y >= CHUNK_SIZE as i16 {y.signum()} else {0};
-            let cell_x = if chunk_x == 0 {x} else {chunk_x};
-            let cell_y = if chunk_y == 0 {y} else {chunk_y};
+            let chunk_x = if x < 0 || x >= CHUNK_SIZE as i16 {x.signum() as i64} else {0};
+            let chunk_y = if y < 0 || y >= CHUNK_SIZE as i16 {y.signum() as i64} else {0};
+            let cell_x = if chunk_x == 0 {x} else {CHUNK_SIZE-1*(chunk_x == -1) as i16};
+            let cell_y = if chunk_y == 0 {y} else {CHUNK_SIZE-1*(chunk_y == -1) as i16};
             // data
-            if let Some(chunk) = &self.border.borrow()[dir2index(cell_x as i64, cell_y as i64)]{
-                return Some(chunk.cells.borrow().get(cell_x, cell_y));
-            }
-            return None;
+            return self.chunk_to(chunk_x, chunk_y).cells.borrow().get(cell_x, cell_y);
         }else{
-            return Some(self.cells.borrow().get(x, y));
+            return self.cells.borrow().get(x, y);
         }
     }
-    pub fn set_check(&self, x: i16, y: i16){
+    pub fn set_check(&self, x: i16, y: i16) -> Option<((i64, i64), Rc<CellChunk>)>{
         if x < 0 || x >= CHUNK_SIZE as i16 || y < 0 || y >= CHUNK_SIZE as i16{
             // direction to neighbour chunk
-            let chunk_x = if x < 0 || x >= CHUNK_SIZE as i16 {x.signum()} else {0};
-            let chunk_y = if y < 0 || y >= CHUNK_SIZE as i16 {y.signum()} else {0};
-            let cell_x = if chunk_x == 0 {x} else {chunk_x};
-            let cell_y = if chunk_y == 0 {y} else {chunk_y};
-            if let Some(chunk) = &self.border.borrow()[dir2index(cell_x as i64, cell_y as i64)]{
-                chunk.check.borrow_mut().insert((x, y), ());
-            }
+            let chunk_x = if x < 0 || x >= CHUNK_SIZE as i16 {x.signum() as i64} else {0};
+            let chunk_y = if y < 0 || y >= CHUNK_SIZE as i16 {y.signum() as i64} else {0};
+            let cell_x = if chunk_x == 0 {x} else {CHUNK_SIZE-1*(chunk_x == -1) as i16};
+            let cell_y = if chunk_y == 0 {y} else {CHUNK_SIZE-1*(chunk_y == -1) as i16};
+            let chunk = self.chunk_to(chunk_x, chunk_y);
+            chunk.check.borrow_mut().insert((cell_x, cell_y), ());
+            return Some(((chunk_x as i64, chunk_y as i64), chunk));
         }else{
             self.check.borrow_mut().insert((x, y), ());
+            return None; 
         }
     }
 
@@ -92,7 +90,7 @@ impl CellChunk {
 pub struct World {
     size: Vec4<i64>,
     root: Rc<CellChunk>,
-    alive_chunks: HashMap<(i64, i64), ()>
+    alive_chunks: HashMap<(i64, i64), (Rc<CellChunk>)>
 }
 impl World {
     pub fn new() -> Self {
@@ -325,16 +323,16 @@ impl World {
         let mut expand_x = 0;
         let mut expand_y = 0;
         if x >= self.size.x2 {
-            expand_x = ((x - self.size.x2+1) as f64 / CHUNK_SIZE as f64).ceil() as i64;
+            expand_x = ((x - self.size.x2 + 2) as f64 / CHUNK_SIZE as f64).ceil() as i64;
         }
         if x <= self.size.x1 {
-            expand_x = ((x - self.size.x1 - 1) as f64 / CHUNK_SIZE as f64).floor() as i64;
+            expand_x = ((x - self.size.x1 - 2) as f64 / CHUNK_SIZE as f64).floor() as i64;
         }
         if y >= self.size.y2 {
-            expand_y = ((y - self.size.y2 + 1) as f64 / CHUNK_SIZE as f64).ceil() as i64;
+            expand_y = ((y - self.size.y2 + 2) as f64 / CHUNK_SIZE as f64).ceil() as i64;
         }
         if y <= self.size.y1 {
-            expand_y = ((y - self.size.y1 - 1) as f64 / CHUNK_SIZE as f64).floor() as i64;
+            expand_y = ((y - self.size.y1 - 2) as f64 / CHUNK_SIZE as f64).floor() as i64;
         }
         if expand_x != 0 || expand_y != 0{
             self.resize(expand_x, expand_y);
@@ -344,7 +342,6 @@ impl World {
         let chunk_y = ((y) as f64 / CHUNK_SIZE as f64).floor() as i64;
         let cell_x = (x - (chunk_x * CHUNK_SIZE as i64)) as usize;
         let cell_y = (y - (chunk_y * CHUNK_SIZE as i64)) as usize;
-        self.alive_chunks.insert((chunk_x, chunk_y), ());
         // Set chunk
         let chunk =  self.get_chunk(chunk_x, chunk_y);
         chunk.cells.borrow_mut().set(
@@ -353,62 +350,34 @@ impl World {
             state
         );
         chunk.alive.borrow_mut().insert((cell_x as i16, cell_y as i16), ());
+        self.alive_chunks.insert((chunk_x, chunk_y), chunk);
     }
     pub fn life_step(&mut self){
-        let mut dead_chunks = Vec::<(i64, i64)>::new();
-        // Check live cells
-        for (pos, _) in self.alive_chunks.iter(){
-            let chunk = self.get_chunk(pos.0, pos.1);
-            let alive = chunk.alive.borrow();
-            for cell_pos in alive.iter(){
-                
-                let mut count = 0;
-                // Check sourrounding cells
+        // Check live cells to make surrounding cells
+        let mut born_chunks = Vec::<((i64, i64), Rc<CellChunk>)>::new();
+        let mut alive_border = Vec4::<i64>::new();
+
+        for chunk in self.alive_chunks.iter(){
+            for cell in chunk.1.alive.borrow().iter(){
                 for i in 0..8{
-                    let pos = index2dir(i);
-                    let pos = (pos.0 as i16 + cell_pos.0.0, pos.1 as i16 + cell_pos.0.1);
-                    if let Some(cell) = chunk.get_cell(pos.0, pos.1){
-                        if cell{
-                            count += 1;
-                        }else{
-                            chunk.set_check(pos.0, pos.1);
+                    let dir = index2dir(i);
+                    let pos = (cell.0.0 + dir.0, cell.0.1 + dir.1);
+
+                    // If there isnt alive cell, mark it to check
+                    if !chunk.1.get_cell(pos.0, pos.1){
+                        if let Some(born_chunk) = chunk.1.set_check(pos.0, pos.1){
+                            // If there is newborn chunk
+                            let chunk_x = born_chunk.0.0 + chunk.0.0;
+                            let chunk_y = born_chunk.0.1 + chunk.0.1;
+                            if chunk_x > alive_border.x2 {alive_border.x2 = chunk_x};
+                            if chunk_x < alive_border.x1 {alive_border.x1 = chunk_x};
+                            if chunk_y > alive_border.y2 {alive_border.y2 = chunk_y};
+                            if chunk_y < alive_border.y1 {alive_border.y2 = chunk_y};
+                            born_chunks.push(((chunk_x, chunk_y), born_chunk.1));
                         }
                     }
                 }
-                if !(count == 3 || count == 2){
-                    chunk.alive.borrow_mut().remove(cell_pos.0);
-                    chunk.cells.borrow_mut().set(cell_pos.0.0 as usize, cell_pos.0.1 as usize, false)
-                }
             }
-        }
-        // Check surroundings
-        for (pos, _) in self.alive_chunks.iter(){
-            let chunk = self.get_chunk(pos.0, pos.1);
-            let check = chunk.check.borrow();
-            for cell_pos in check.iter(){
-                
-                let mut count = 0;
-                // Check sourrounding cells
-                for i in 0..8{
-                    let pos = index2dir(i);
-                    let pos = (pos.0 as i16 + cell_pos.0.0, pos.1 as i16 + cell_pos.0.1);
-                    if let Some(cell) = chunk.get_cell(pos.0, pos.1){
-                        if cell{
-                            count += 1;
-                        }
-                    }
-                }
-                if count == 3 || count == 2{
-                    chunk.alive.borrow_mut().insert(*cell_pos.0, ());
-                    chunk.cells.borrow_mut().set(cell_pos.0.0 as usize, cell_pos.0.1 as usize, true)
-                }
-                chunk.check.borrow_mut().remove(cell_pos.0);
-            }
-            if chunk.alive.borrow().len() == 0 {self.alive_chunks.remove(pos);}
-        }
-        // Delete dead chunks from hashmap
-        for pos in dead_chunks{
-            self.alive_chunks.remove(&pos);
         }
     }
     

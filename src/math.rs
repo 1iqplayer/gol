@@ -31,6 +31,9 @@ impl Vec4<i64> {
         }
         Some(rect)
     }
+    pub fn new() -> Vec4<i64>{
+        Vec4 { x1: 0, y1: 0, x2: 0, y2: 0 }
+    }
 }
 pub struct Vec2<T> {
     pub x: T,
@@ -58,9 +61,9 @@ pub fn dir2index(x: i64, y: i64) -> usize {
     }
     0
 }  
-pub fn index2dir(index: i32) -> (i64, i64) {
+pub fn index2dir(index: i32) -> (i16, i16) {
     for i in DIR2INDEX{
-        if i.1 == index as usize { return i.0 }
+        if i.1 == index as usize { return (i.0.0 as i16, i.0.1 as i16) }
     }
     (0, 0)
 }  
